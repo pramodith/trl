@@ -849,17 +849,27 @@ class GRPOTrainer(Trainer):
             # Divide logits by sampling temperature.
             # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
             all_logits.append(logits)
-        return torch.stack(all_logits, dim=0)
+        return torch.cat(all_logits, dim=0)
 
-    def _get_per_token_logps(self, logits: torch.Tensor, input_ids_batch: torch.Tensor)-> torch.Tensor:
+    
+    @profiling_decorator
+    def _get_per_token_logps(
+        self, 
+        logits: torch.Tensor, 
+        input_ids: torch.Tensor, 
+        logits_to_keep: int
+    )-> torch.Tensor:
         logits = logits / self.temperature
-        logps = selective_log_softmax(logits, input_ids_batch)  # compute logprobs for the input tokens
+        completion_ids = input_ids[:, -logits_to_keep:]
+        logps = selective_log_softmax(logits, completion_ids)  # compute logprobs for the input tokens
         return logps
     
-    def _get_response_entropy(self, logits: torch.Tensor) -> torch.Tensor:
+    @profiling_decorator
+    def _get_responses_entropy(self, logits: torch.Tensor) -> torch.Tensor:
         # Gradients should remain unaffected by these ops.
         with torch.no_grad():
-            entropy = - logits * torch.log(logits)
+            probs = torch.softmax(logits, dim=-1)
+            entropy = - probs * torch.log(probs)
             entropy = entropy.sum(dim=-1)
             return entropy
 
@@ -1140,7 +1150,11 @@ class GRPOTrainer(Trainer):
                 old_per_token_logits = self._get_per_token_logits(
                     self.model, prompt_completion_ids, attention_mask, logits_to_keep, batch_size
                 )
-                old_per_token_logps = self._get_per_token_logps(old_per_token_logits, prompt_completion_ids)
+                old_per_token_logps = self._get_per_token_logps(
+                    old_per_token_logits, prompt_completion_ids, logits_to_keep
+                )
+            else:
+                old_per_token_logps = None
 
         # Decode the generated completions
         completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
@@ -1290,7 +1304,9 @@ class GRPOTrainer(Trainer):
                         ref_per_token_logits = self._get_per_token_logits(
                             self.model, input_ids, attention_mask, logits_to_keep
                         )
-                ref_per_token_logps = self._get_per_token_logps(ref_per_token_logits, input_ids)
+                ref_per_token_logps = self._get_per_token_logps(
+                    ref_per_token_logits, input_ids, logits_to_keep
+                )
 
         # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, input_ids, attention_mask, logits_to_keep)
@@ -1337,17 +1353,19 @@ class GRPOTrainer(Trainer):
         logits_to_keep = completion_ids.size(1)  # we only need to compute the logits for the completion tokens
 
         logits = self._get_per_token_logits(model, input_ids, attention_mask, logits_to_keep)
-        per_token_logps = self._get_per_token_logps(logits, input_ids)
+        per_token_logps = self._get_per_token_logps(logits, input_ids, logits_to_keep)
         
         # Compute the entropy at each position in the completion
         if self.filter_on_entropy:
-            entropies = self._get_response_entropy(logits.detach())
-            # Mask out tokens corresponding to positions in the completion where the entropy is not in the top
-            # `token_entropy_percentile_threshold` percentile, we need to find the entropy threshold based on all 
-            # tokens in the batch and not just along a given batch index.
+            entropies = self._get_responses_entropy(logits)
+            # we need to find the entropy threshold based on all tokens in the 
+            # batch and not just along a given batch index.
             entropy_threshold = torch.quantile(entropies.flatten(), self.token_entropy_percentile_threshold)
+            # Create a mask for tokens corresponding to positions in the completion 
+            # where the entropy is not in the top `token_entropy_percentile_threshold` percentile.
             entropy_mask = entropies >= entropy_threshold
-            per_token_logps = per_token_logps * entropy_mask
+        else:
+            entropy_mask = None
 
         # Compute the KL divergence between the model and the reference model
         if self.beta != 0.0:
@@ -1362,7 +1380,7 @@ class GRPOTrainer(Trainer):
                         self.model, input_ids, attention_mask, logits_to_keep
                     )
                 
-                ref_per_token_logps = self._get_per_token_logps(ref_per_token_logits, input_ids)
+                ref_per_token_logps = self._get_per_token_logps(ref_per_token_logits, input_ids, logits_to_keep)
 
 
             per_token_kl = (
@@ -1387,6 +1405,9 @@ class GRPOTrainer(Trainer):
         per_token_loss1 = coef_1 * advantages.unsqueeze(1)
         per_token_loss2 = coef_2 * advantages.unsqueeze(1)
         per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        if entropy_mask is not None:
+            # mask out tokens based on entropy
+            per_token_loss = per_token_loss * entropy_mask
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
