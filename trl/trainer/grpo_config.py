@@ -489,7 +489,20 @@ class GRPOConfig(TrainingArguments):
             "synchronized with the reference policy. To use this parameter, you must set `sync_ref_model=True`."
         },
     )
-    
+    filter_on_entropy: bool = field(
+        default=False,
+        metadata={
+            "help": "If set to true, the tokens corresponding to positions in the completion where the entropy is not in the "
+            "top `token_entropy_percentile_threshold` percentile are masked out."
+        },
+    )
+    token_entropy_percentile_threshold: float = field(
+        default=0.8,
+        metadata={
+            "help": "Percentile threshold for filtering tokens based on entropy. Positions in the completion with "
+            "entropy below this percentile are masked out."
+        },
+    )
     use_liger_loss: bool = field(
         default=False,
         metadata={"help": "Whether to use the Liger GRPO loss."},
