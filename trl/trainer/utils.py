@@ -1188,10 +1188,10 @@ class OnPolicyConfig(TrainingArguments):
     )
 
     def __post_init__(self):
-        if not torch.cuda.is_available():
-            self.bf16 = False
-        else:
-            self.bf16 = not (self.fp16) if self.bf16 is None else self.bf16
+        if self.bf16 is None:
+            supports_bf16 = is_bf16_compatible()
+            if torch.cuda.is_available():
+                self.bf16 = not self.fp16 if supports_bf16 else False
 
         super().__post_init__()
 
@@ -1895,3 +1895,21 @@ def print_prompt_completions_sample(
 
     panel = Panel(table, expand=False, title=f"Step {step}", border_style="bold white")
     console.print(panel)
+
+
+def is_bf16_compatible() -> bool:
+    """
+    Check if the current device supports bfloat16 (BF16) data type.
+
+    Returns:
+        `bool`: `True` if BF16 is supported, `False` otherwise.
+    """
+    if not torch.cuda.is_available():
+        try:
+            _ = torch.tensor([1.0], dtype=torch.bfloat16, device="cpu")
+            return True
+        except Exception:
+            return False
+    elif not torch.cuda.is_bf16_supported():
+        return False
+    return True

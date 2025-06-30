@@ -15,8 +15,9 @@
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-import torch
 from transformers import TrainingArguments
+
+from .utils import is_bf16_compatible
 
 
 @dataclass
@@ -188,9 +189,11 @@ class CPOConfig(TrainingArguments):
     )
 
     def __post_init__(self):
-        if not torch.cuda.is_available():
-            self.bf16 = False
-        else:
-            self.bf16 = not (self.fp16) if self.bf16 is None else self.bf16
+        if self.bf16 is None:
+            supports_bf16 = is_bf16_compatible()
+            if self.use_cpu:
+                self.bf16 = supports_bf16
+            else:
+                self.bf16 = not self.fp16 if supports_bf16 else False
 
         super().__post_init__()
