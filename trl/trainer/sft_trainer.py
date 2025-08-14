@@ -894,12 +894,14 @@ class SFTTrainer(Trainer):
                                 tools=examples.get("tools"),
                                 **examples.get("chat_template_kwargs", {}),
                             )
-                            if "assistant_masks" in processed and 1 not in processed["assistant_masks"]:
-                                raise RuntimeError(
-                                    "You're using `assistant_only_loss=True`, but at least one example has no "
-                                    "assistant tokens. This usually means the tokenizer's chat template doesn't "
-                                    "generate assistant masks — it may be missing the `{% generation %}` keyword. Please "
-                                    "check the template and ensure it's correctly configured to support assistant "
+                            if "assistant_masks" in processed:
+                                is_assistant_token_present = [1 in assistant_mask for assistant_mask in processed["assistant_masks"]]
+                                if not any(is_assistant_token_present):
+                                    raise RuntimeError(
+                                        "You're using `assistant_only_loss=True`, but at least one example has no "
+                                        "assistant tokens. This usually means the tokenizer's chat template doesn't "
+                                        "generate assistant masks — it may be missing the `{% generation %}` keyword. Please "
+                                        "check the template and ensure it's correctly configured to support assistant "
                                     "masking."
                                 )
                             output = {k: processed[k] for k in ("input_ids", "assistant_masks") if k in processed}
