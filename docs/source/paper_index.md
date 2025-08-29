@@ -18,7 +18,7 @@ from trl import GRPOConfig
 training_args = GRPOConfig(
     importance_sampling_level="sequence",
     loss_type="grpo",
-    beta=0.0,  # GSPO set kl regularization to zero: https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306 
+    beta=0.0,  # GSPO set KL regularization to zero: https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306 
     epsilon=3e-4,  # GSPO paper (v2), section 5.1
     epsilon_high=4e-4,  # GSPO paper (v2), section 5.1
     gradient_accumulation_steps=1,
@@ -30,7 +30,7 @@ training_args = GRPOConfig(
 
 **📜 Paper**: https://huggingface.co/papers/2503.14476
 
-The DAPO algorithm, includes 5 key components:
+The DAPO algorithm includes 5 key components:
 
 - Overlong Filtering
 - Clip-Higher
@@ -103,6 +103,24 @@ training_args = DPOConfig(
 )
 ```
 
+## Back to Basics: Revisiting REINFORCE Style Optimization for Learning from Human Feedback in LLMs
+
+**📜 Paper**: https://huggingface.co/papers/2402.14740
+
+RLOO is a variant of REINFORCE that reduces variance by using leave-one-out baselines. It computes rewards by comparing each sample against the average of all other samples in the batch, providing more stable gradients than standard REINFORCE. To reproduce the paper's setting, use this configuration:
+
+```python
+from trl import RLOOConfig
+
+training_args = RLOOConfig(
+    per_device_train_batch_size=512,  # section C Training Detail of the paper
+    steps_per_generation=2  # section C Training Detail of the paper
+    beta=0.03  # section C Training Detail of the paper
+    num_generations=2,  # experiments of paper different num_generations={2,4}
+    learning_rate=1e-6  # section C Training Detail of the paper
+)
+```
+
 ## AlphaPO -- Reward shape matters for LLM alignment
 
 **📜 Paper**: https://huggingface.co/papers/2501.03884
@@ -165,7 +183,7 @@ training_args = GRPOConfig(
     temperature=0.99,
     num_completions=8, # = num_return_sequences in the paper
     num_iterations=1,  # = ppo_epochs in the paper
-    per_device_train_batch_size=4
+    per_device_train_batch_size=4,
     gradient_accumulation_steps=32,
     steps_per_generation=8,  # (rollout_batch_size*num_return_sequences) / (per_device_train_batch_size*gradient_accumulation_steps)
 )
