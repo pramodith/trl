@@ -28,7 +28,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("gradio_client").setLevel(logging.WARNING)
 
 # Select model optimized for instruction-following and reasoning
-model_name = "Qwen/Qwen2.5-3B-Instruct"  # 3B parameter model balances capability and memory usage
+model_name = "Qwen/Qwen2.5-1.5B-Instruct"  # 1.5B parameter model balances capability and memory usage
 max_seq_length = 2048                     # Token limit for mathematical problems (reduce if OOM)
 
 print(f"Loading model: {model_name}")
@@ -263,14 +263,15 @@ training_args = GRPOConfig(
     learning_rate=1e-4,              # Conservative LR to prevent destabilizing reasoning
     
     # Memory-efficient batch configuration
-    per_device_train_batch_size=16,   # Small batch for GPU memory constraints
-    gradient_accumulation_steps=2,   # Effective batch size = 8 * 1 = 8
+    per_device_train_batch_size=8,   # Small batch for GPU memory constraints
+    gradient_accumulation_steps=4,   # Effective batch size = 8 * 1 = 8
     num_generations=8,            # Generate 8 completions per prompt for diverse rewards
     # Sequence length limits for mathematical problems
     max_prompt_length=1024,          # Sufficient for complex word problems
     max_completion_length=1024,      # Room for detailed step-by-step reasoning
     use_vllm=True,
     vllm_mode="colocate",
+    vllm_gpu_memory_utilization=0.3,
     # Training duration and monitoring
     max_steps=10,                    # Short demo run (increase to 500+ for production)
     logging_steps=1,                 # Log metrics every step for close monitoring
@@ -284,7 +285,7 @@ training_args = GRPOConfig(
 # Create unique run name with timestamp to ensure fresh tracking
 import datetime
 timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-run_name = f"qwen2.5-3b-gsm8k-grpo-{timestamp}"
+run_name = f"qwen2.5-1.5b-gsm8k-grpo-{timestamp}"
 
 # Initialize trackio experiment tracking with unique run name
 trackio.init(
@@ -292,7 +293,7 @@ trackio.init(
     name=run_name,                         # Unique run identifier with timestamp
     config={
         # Model and dataset configuration
-        "model_name": "Qwen/Qwen2.5-3B-Instruct",
+        "model_name": "Qwen/Qwen2.5-1.5B-Instruct",
         "dataset": "GSM8K", 
         "technique": "GRPO + LoRA",
         
@@ -313,7 +314,7 @@ trackio.init(
         "max_completion_length": training_args.max_completion_length,
         
         # Reward system
-        "num_reward_functions": 2,
+        "num_reward_functions": 1,
     }
 )
 
@@ -331,7 +332,7 @@ print(f"📊 Run name: {run_name}")
 trainer = GRPOTrainer(
     model=model,                      # LoRA-adapted quantized model
     reward_funcs=[                    # Four complementary reward functions
-        match_format_exactly,         # Perfect structure compliance
+        # match_format_exactly,         # Perfect structure compliance
         # match_format_approximately,   # Partial format credit
         check_answer_correctness,     # Mathematical accuracy
         # check_numbers_extraction,     # Number parsing ability
