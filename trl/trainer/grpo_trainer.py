@@ -1727,6 +1727,14 @@ class GRPOTrainer(BaseTrainer):
         if self.beta != 0.0:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
+        if self.args.enable_zero_variance_filtering:
+            # Zero-variance filtering: zero out loss for tokens where the advantage is close to zero
+            zero_variance_mask = advantages.ne(0.0).float().unsqueeze(1)
+            local_effective_batch_size = zero_variance_mask.sum()
+            completion_mask = completion_mask * zero_variance_mask
+        else:
+            local_effective_batch_size = per_token_loss.size(0)
+
         if self.loss_type == "grpo":
             loss = ((per_token_loss * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)).mean()
             loss = loss / self.current_gradient_accumulation_steps
@@ -1734,7 +1742,7 @@ class GRPOTrainer(BaseTrainer):
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
             loss = loss / self.current_gradient_accumulation_steps
         elif self.loss_type == "dr_grpo":
-            loss = (per_token_loss * completion_mask).sum() / (per_token_loss.size(0) * self.max_completion_length)
+            loss = (per_token_loss * completion_mask).sum() / (local_effective_batch_size * self.max_completion_length)
             loss = loss / self.current_gradient_accumulation_steps
         elif self.loss_type == "dapo":
             normalizer = inputs["num_items_in_batch"] / self.accelerator.num_processes

@@ -229,6 +229,9 @@ class GRPOConfig(TrainingArguments):
         vllm_importance_sampling_cap (`float`, *optional*, defaults to `2.0`):
             Truncation parameter C for Truncated Importance Sampling (TIS). This sets an upper bound on the importance
             sampling ratio, improving training stability.
+        enable_zero_variance_filtering (`bool`, *optional*, defaults to `False`):
+            When set to true the loss is aggregated after discarding the completions with zero variance, as recommended
+            in the [ScaleRL](https://huggingface.co/papers/2510.13786) recipe.
 
         > Parameters that control the logging
 
@@ -613,6 +616,13 @@ class GRPOConfig(TrainingArguments):
         metadata={
             "help": "Truncation parameter C for Truncated Importance Sampling (TIS). This sets an upper bound on the "
             "importance sampling ratio, improving training stability."
+        },
+    )
+    enable_zero_variance_filtering: bool = field(
+        default=False,
+        metadata={
+            "help": "When set to true the loss is aggregated after discarding the completions with zero variance, "
+            "as recommended in the [ScaleRL](https://huggingface.co/papers/2510.13786) recipe."
         },
     )
 
